@@ -1,71 +1,141 @@
-import math
-
 import torch
 import torch.nn as nn
 
-# TRANSLATION MODEL: ENGLISH TO ITALIAN task
+from .decoder import Decoder
+from .encoder import Encoder
+from .utils import InputEmbeddings, PositionalEncoding, ProjectionLayer
 
 
-class InputEmbeddings(nn.Module):
+class Transformer(nn.Module):
     """_summary_
 
     Args:
         nn (_type_): _description_
     """
 
-    def __init__(self, d_model: int, voc_size: int) -> None:
+    def __init__(
+        self,
+        n: int,
+        d_model,
+        d_ff: int,
+        h: int,
+        src_seq_length: int,
+        trg_seq_length: int,
+        src_voc_size: int,
+        trg_voc_size: int,
+        dropout: torch.float,
+    ) -> None:
         super().__init__()
-        self.d_model = d_model
-        self.embedding = nn.Embedding(num_embeddings=voc_size, embedding_dim=d_model)
+        self.src_input = InputEmbeddings(d_model, src_voc_size)
+        self.trg_input = InputEmbeddings(d_model, trg_voc_size)
+        self.pe_src = PositionalEncoding(d_model, src_seq_length, dropout)
+        self.pe_trg = PositionalEncoding(d_model, trg_seq_length, dropout)
+        self.encoder = Encoder(n, d_model, d_ff, h, dropout)
+        self.decoder = Decoder(n, d_model, d_ff, h, dropout)
+        self.proj = ProjectionLayer(d_model, trg_voc_size)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def encode(
+        self,
+        x: torch.Tensor,
+        src_mask: torch.Tensor,
+    ) -> torch.Tensor:
         """_summary_
 
         Args:
             x (torch.Tensor): _description_
+            y (torch.Tensor): _description_
+            src_mask (torch.Tensor): _description_
+            trg_mask (torch.Tensor): _description_
 
         Returns:
             torch.Tensor: _description_
         """
-        return self.embedding(x) * math.sqrt(self.d_model)
+        x = self.src_input(x)
+        x = self.pe_src(x)
+        return self.encoder(x, src_mask)
+
+    def decode_proj(
+        self,
+        o: torch.Tensor,
+        y: torch.Tensor,
+        src_mask: torch.Tensor,
+        trg_mask: torch.Tensor,
+    ) -> torch.Tensor:
+        """_summary_
+
+        Args:
+            x (torch.Tensor): _description_
+            y (torch.Tensor): _description_
+            src_mask (torch.Tensor): _description_
+            trg_mask (torch.Tensor): _description_
+
+        Returns:
+            torch.Tensor: _description_
+        """
+        y = self.trg_input(y)
+        y = self.pe_trg(y)
+        y = self.decoder(y, o, o, src_mask, trg_mask)
+        y = self.proj(y)
+        return y
+
+    def forward(
+        self,
+        x: torch.Tensor,
+        y: torch.Tensor,
+        src_mask: torch.Tensor,
+        trg_mask: torch.Tensor,
+    ) -> torch.Tensor:
+        """_summary_
+
+        Args:
+            x (torch.Tensor): _description_
+            y (torch.Tensor): _description_
+            src_mask (torch.Tensor): _description_
+            trg_mask (torch.Tensor): _description_
+
+        Returns:
+            torch.Tensor: _description_
+        """
+        o = self.encode(x, src_mask)
+        return self.decode_proj(o, y, src_mask, trg_mask)
 
 
-class PositionalEncoding(nn.Module):
+def build_model(
+    *,
+    n: int = 6,
+    d_model: int = 512,
+    d_ff: int = 2048,
+    h: int = 8,
+    src_seq_length: int,
+    trg_seq_length: int,
+    src_voc_size: int,
+    trg_voc_size: int,
+    dropout: torch.float = 0.1
+) -> Transformer:
     """_summary_
 
     Args:
-        nn (_type_): _description_
+        src_seq_length (int): _description_
+        trg_seq_length (int): _description_
+        src_voc_size (int): _description_
+        trg_voc_size (int): _description_
+        n (int, optional): _description_. Defaults to 6.
+        d_model (int, optional): _description_. Defaults to 512.
+        d_ff (int, optional): _description_. Defaults to 2048.
+        h (int, optional): _description_. Defaults to 8.
+        dropout (torch.float, optional): _description_. Defaults to 0.1.
+
+    Returns:
+        Transformer: _description_
     """
-
-    def __init__(self, d_model: int, max_seq_length: int, dropout: torch.float) -> None:
-        super().__init__()
-        self.d_model = d_model
-        self.max_seq_length = max_seq_length
-        self.dropout = nn.Dropout(dropout)
-        # (max_seq,range)
-        self.pe = torch.zeros((max_seq_length, d_model))
-        # (max-seq_length,1)
-        pos = torch.arange(0, max_seq_length, dtype=torch.float).unsqueeze(1)
-        div = torch.exp(
-            2.0
-            * torch.arange(0, d_model, 2, dtype=torch.float)
-            * (-math.log(10_000.0) / (d_model))
-        )
-        self.pe[:, 0::2] = torch.sin(pos * div)
-        self.pe[:, 1::2] = torch.cos(pos * div)
-        # ( 1, max_length_seq, d_model)
-        self.pe = self.pe.unsqueeze(0)
-        self.register_buffer("pe", self.pe)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """_summary_
-
-        Args:
-            x (torch.Tensor): _description_
-
-        Returns:
-            torch.Tensor: _description_
-        """
-        # x:  ( batch_size, seq_size, d_model )
-        x += self.pe[:, : x.shape[1], :].requires_grad_(False)
-        return self.dropout(x)
+    return Transformer(
+        n,
+        d_model,
+        d_ff,
+        h,
+        src_seq_length,
+        trg_seq_length,
+        src_voc_size,
+        trg_voc_size,
+        dropout,
+    )
