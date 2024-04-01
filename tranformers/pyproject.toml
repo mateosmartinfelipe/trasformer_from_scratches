@@ -1,0 +1,21 @@
+[tool.poetry]
+name = "tranformers"
+version = "0.1.0"
+description = ""
+authors = ["felipe-mateos-ext <felipe.mateos.ext@adevinta.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+torch = "^2.2.2"
+numpy = "^1.26.4"
+
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.1.1"
+black = "^24.3.0"
+mypy = "^1.9.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
