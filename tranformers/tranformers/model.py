@@ -128,7 +128,7 @@ def build_model(
     Returns:
         Transformer: _description_
     """
-    return Transformer(
+    transformer = Transformer(
         n,
         d_model,
         d_ff,
@@ -139,3 +139,7 @@ def build_model(
         trg_voc_size,
         dropout,
     )
+    for p in transformer.parameters():
+        if p.dim() > 1:
+            nn.init.xavier_uniform(p)
+    return transformer
